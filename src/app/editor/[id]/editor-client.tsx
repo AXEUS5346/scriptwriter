@@ -6,12 +6,14 @@ import {
   ArrowLeftIcon,
   DownloadIcon,
   Loader2Icon,
-  SparklesIcon,
   Volume2Icon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LogoTile } from '@/components/logo';
+import { FixPopup, DiffPopup } from '@/components/editor/fix-popup';
+import type { RewriteMode } from '@/lib/grammar';
+import { diffIsNoop } from '@/lib/diff';
 import {
   AudioPlayerProvider,
   useAudioPlayer,
@@ -27,7 +29,16 @@ import { caretRect, getCaretTextIndex, getSelectionTextRange } from '@/lib/caret
 import { cn } from 'cn';
 
 type Preflight = { state: 'loading' | 'ready' | 'failed'; reason?: string };
-type FixBar = { lineId: string; top: number; left: number; start: number; end: number } | null;
+type FixBar = { lineId: string; top: number; bottom: number; left: number; start: number; end: number } | null;
+type FixResultPopup = {
+  lineId: string;
+  start: number;
+  rect: { top: number; bottom: number; left: number };
+  prevFull: string; // whole line text before the rewrite (for revert)
+  prev: string;     // spoken words before (tags stripped) — diff side
+  next: string;     // spoken words after (tags stripped) — diff side
+  mode: RewriteMode;
+} | null;
 
 // outer shell: the ElevenLabs AudioPlayerProvider owns the single <audio> element
 export default function EditorClient() {
@@ -55,6 +66,8 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   const [notifs, setNotifs] = useState<NotificationItem[]>([]);  const [menu, setMenu] = useState<SlashMenuState | null>(null);
   const [fix, setFix] = useState<FixBar>(null);
   const [fixBusy, setFixBusy] = useState(false);
+  const [fixBusyMode, setFixBusyMode] = useState<RewriteMode>('grammar');
+  const [fixResult, setFixResult] = useState<FixResultPopup>(null);
   const [pendingCaret, setPendingCaret] = useState<{ lineId: string; index: number } | null>(null);
   const [regenBusy, setRegenBusy] = useState(false);
   const [fillers, setFillers] = useState(12);
@@ -77,6 +90,7 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   );
   const genSetRef = useRef(genSet);
   const fixBusyRef = useRef(fixBusy);
+  const fixResultRef = useRef(fixResult);
   const payloadRef = useRef<string | null>(null);
   const rowElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const savedPayloadRef = useRef<string | null>(null);
@@ -90,8 +104,27 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     linesRef.current = lines;
     genSetRef.current = genSet;
     fixBusyRef.current = fixBusy;
+    fixResultRef.current = fixResult;
     payloadRef.current = payload;
-  }, [lines, genSet, fixBusy, payload]);
+  }, [lines, genSet, fixBusy, fixResult, payload]);
+
+  // review card: Escape or a click outside keeps the edit and dismisses the card
+  useEffect(() => {
+    if (!fixResult) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') keepFixResult();
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('[data-diff-popup]')) keepFixResult();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixResult]);
 
   // ruled sheet: enough empty stripes to fill the screen below the written lines
   useEffect(() => {
@@ -251,6 +284,7 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   useEffect(() => {
     const onSel = () => {
       if (fixBusyRef.current) return;
+      if (fixResultRef.current) return; // review card stays put while open
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) { setFix(null); return; }
       const r = sel.getRangeAt(0);
@@ -271,17 +305,19 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
       // selections that carry no speakable words (emotion chips only) get no button
       if (picked.replace(/\[[a-z]+\]/gi, ' ').replace(/\s/g, '').length < 2) { setFix(null); return; }
       const rect = r.getBoundingClientRect();
-      setFix({ lineId, top: Math.max(8, rect.top - 44), left: Math.max(8, rect.left), start: bounds.start, end: bounds.end });
+      setFix({ lineId, top: Math.max(8, rect.top), bottom: rect.bottom, left: Math.max(8, rect.left), start: bounds.start, end: bounds.end });
     };
     document.addEventListener('selectionchange', onSel);
     return () => document.removeEventListener('selectionchange', onSel);
   }, []);
 
-  const applyFix = async () => {
+  const applyFix = async (mode: RewriteMode) => {
     if (!fix) return;
     const line = linesRef.current.find((l) => l.id === fix.lineId);
     if (!line) return;
-    const { lineId, start, end } = fix;
+    setFixResult(null);
+    setFixBusyMode(mode);
+    const { lineId, top, bottom, left, start, end } = fix;
     const orig = line.text.slice(start, end);
     // only raw spoken words go to the AI: emotion tags are stripped from every
     // segment; the tags themselves stay in the line afterwards, at their spots
@@ -303,11 +339,11 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
         const r = await fetch('/api/grammar', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: s.text }),
+          body: JSON.stringify({ text: s.text, mode }),
         });
         const j = (await r.json()) as { text?: string; error?: string };
         if (!r.ok || !j.text) {
-          pushNote({ tone: 'warning', unread: true, title: 'Grammar fix failed', description: j.error ?? `HTTP ${r.status}` });
+          pushNote({ tone: 'warning', unread: true, title: mode === 'improve' ? 'Improve writing failed' : 'Grammar fix failed', description: j.error ?? `HTTP ${r.status}` });
           setFix(null);
           return;
         }
@@ -319,33 +355,45 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
         .map((s, i) => (isTag(s) ? s : fixedByIndex.get(i) ?? s.replace(/\s{2,}/g, ' ').trim()))
         .join('');
       replaced = replaced.replace(/(\S)\[/g, '$1 [').replace(/\](\S)/g, '] $1').replace(/\s{2,}/g, ' ').trim();
+      const spokenBefore = orig.replace(/\[[a-z]+\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+      const spokenAfter = replaced.replace(/\[[a-z]+\]/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+      setFix(null);
+      window.getSelection()?.removeAllRanges();
+      if (diffIsNoop(spokenBefore, spokenAfter)) {
+        pushNote({
+          tone: 'info',
+          unread: true,
+          title: mode === 'improve' ? 'Already at its best' : 'Nothing to correct',
+          description: 'The AI found no changes for this text.',
+        });
+        return;
+      }
       patchLine(lineId, { text: line.text.slice(0, start) + replaced + line.text.slice(end) });
       undoRef.current.push({ lineId, text: prev });
       setPendingCaret({ lineId, index: start + replaced.length });
-      window.getSelection()?.removeAllRanges();
-      setFix(null);
-      const noteId = pushNote({
-        tone: 'info',
-        unread: true,
-        title: 'Grammar fixed',
-        description: 'The selection was replaced. Undo restores the previous text.',
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            patchLine(lineId, { text: prev });
-            setPendingCaret({ lineId, index: 1e9 });
-            undoRef.current = undoRef.current.filter((u) => !(u.lineId === lineId && u.text === prev));
-            dismissNote(noteId);
-            pushNote({ title: 'Reverted.' });
-          },
-        },
+      setFixResult({
+        lineId, start,
+        rect: { top, bottom, left },
+        prevFull: prev, prev: spokenBefore, next: spokenAfter, mode,
       });
     } catch (e) {
-      pushNote({ tone: 'warning', unread: true, title: 'Grammar fix failed', description: String(e) });
+      pushNote({ tone: 'warning', unread: true, title: mode === 'improve' ? 'Improve writing failed' : 'Grammar fix failed', description: String(e) });
       setFix(null);
     } finally {
       setFixBusy(false);
     }
+  };
+
+  const keepFixResult = () => setFixResult(null);
+
+  const removeFixResult = () => {
+    if (!fixResult) return;
+    const { lineId, start, prevFull } = fixResult;
+    patchLine(lineId, { text: prevFull });
+    undoRef.current = undoRef.current.filter((u) => !(u.lineId === lineId && u.text === prevFull));
+    setPendingCaret({ lineId, index: start });
+    setFixResult(null);
+    pushNote({ title: 'Reverted.' });
   };
 
   // ---------- line ops ----------
@@ -632,16 +680,30 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   return (
     <main className="flex h-dvh flex-col">
       {fix && !fixBusy && (
-        <div className="fixed z-40 -translate-y-full" style={{ top: fix.top, left: fix.left }}>
-          <Button size="xs" variant="outline" className="gap-1.5 bg-popover shadow-lg" onClick={applyFix}>
-            <SparklesIcon size={12} /> Fix grammar
-          </Button>
-        </div>
+        <FixPopup
+          rect={{ top: fix.top, bottom: fix.bottom, left: fix.left }}
+          busy={false}
+          busyMode={fixBusyMode}
+          onRun={applyFix}
+        />
       )}
-      {fixBusy && fix && (
-        <div className="fixed z-40 -translate-y-full rounded-xl border border-border bg-popover px-3 py-1.5 text-xs text-muted-foreground shadow-lg" style={{ top: fix.top, left: fix.left }}>
-          <span className="inline-flex items-center gap-1.5"><Loader2Icon size={12} className="animate-spin" /> Fixing grammar…</span>
-        </div>
+      {fix && fixBusy && (
+        <FixPopup
+          rect={{ top: fix.top, bottom: fix.bottom, left: fix.left }}
+          busy
+          busyMode={fixBusyMode}
+          onRun={applyFix}
+        />
+      )}
+      {fixResult && (
+        <DiffPopup
+          rect={fixResult.rect}
+          mode={fixResult.mode}
+          prev={fixResult.prev}
+          next={fixResult.next}
+          onKeep={keepFixResult}
+          onRemove={removeFixResult}
+        />
       )}
       {menu && <SlashMenu menu={menu} onCommit={commitMenu} onClose={() => setMenu(null)} onHover={(i) => setMenu((p) => p && ({ ...p, active: i }))} speakerColorOf={speakerColorOf} />}
 

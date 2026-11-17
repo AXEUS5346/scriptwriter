@@ -1,9 +1,10 @@
-// Grammar fix through the LLM provider. Server-only: the API key never leaves
-// the server process (checked into .env.local, gitignored).
+// Grammar fix / writing improvement through the LLM provider. Server-only: the
+// API key never leaves the server process (checked into .env.local, gitignored).
 
+export type RewriteMode = 'grammar' | 'improve';
 export type GrammarResult = { ok: true; text: string } | { ok: false; error: string };
 
-const SYSTEM_PROMPT = `You fix grammar, spelling and punctuation in single lines of dialogue that will be voiced by a text-to-speech engine.
+const GRAMMAR_PROMPT = `You fix grammar, spelling and punctuation in single lines of dialogue that will be voiced by a text-to-speech engine.
 
 Rules:
 - Correct ONLY grammar, spelling and punctuation.
@@ -11,6 +12,21 @@ Rules:
 - The input is plain spoken prose with no markup. Never add tags, brackets, stage directions, emojis, markdown or conventions of any kind.
 - Keep proper nouns, numbers, interjections and the capitalization of names untouched.
 - Output ONLY the corrected line. No quotes, no explanations, no markdown.`;
+
+const IMPROVE_PROMPT = `You improve the writing of single lines of spoken dialogue that will be voiced by a text-to-speech engine.
+
+Rules:
+- Keep the author's meaning, facts, names and numbers exactly.
+- Keep the casual spoken register: contractions, plain words, natural rhythm. Never formalize or lecture.
+- Tighten clunky phrasing, fix run-ons, strengthen weak verbs, smooth the flow.
+- Stay close to the original length (within a few words). It must still feel like the same person talking.
+- The input is plain spoken prose with no markup. Never add tags, brackets, stage directions, emojis, markdown or conventions of any kind.
+- Output ONLY the improved line. No quotes, no explanations, no markdown.`;
+
+const PROMPTS: Record<RewriteMode, string> = {
+  grammar: GRAMMAR_PROMPT,
+  improve: IMPROVE_PROMPT,
+};
 
 /** Only raw spoken words ever reach the model: any [tag] markup is removed
  *  before the request, and the caller (route) already strips too. */
@@ -24,7 +40,7 @@ function stripFences(s: string): string {
   return (fenced ? fenced[1] : t).trim();
 }
 
-export async function fixGrammar(text: string): Promise<GrammarResult> {
+export async function rewriteText(text: string, mode: RewriteMode): Promise<GrammarResult> {
   const spoken = stripMarkup(text);
   if (!spoken) return { ok: false, error: 'Nothing speakable to fix after removing markup' };
   const key = process.env.LLM_API_KEY;
@@ -42,10 +58,10 @@ export async function fixGrammar(text: string): Promise<GrammarResult> {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
+        temperature: mode === 'improve' ? 0.6 : 0.2,
         max_completion_tokens: 2048,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: PROMPTS[mode] },
           { role: 'user', content: spoken },
         ],
       }),

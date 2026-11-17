@@ -13,6 +13,10 @@ exports.default = async function afterPack(context) {
     recursive: true,
     force: true,
   });
+  // never ship the user's env (API key) or personal scripts in a release:
+  // fresh installs bring their own key via app/.env.local and start empty
+  fs.rmSync(path.join(resources, 'app', '.env.local'), { force: true });
+  fs.rmSync(path.join(resources, 'app', '.data'), { recursive: true, force: true });
   if (!fs.existsSync(path.join(resources, 'models'))) {
     fs.cpSync(path.join(src, 'models'), path.join(resources, 'models'), {
       recursive: true,

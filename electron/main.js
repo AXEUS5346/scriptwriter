@@ -183,6 +183,13 @@ async function adoptExistingServer() {
 function startServer() {
   const root = resourceRoot();
   const appRoot = path.join(root, 'app');
+  // Next 16 PPR persists rendered pages into .next/server/route-cache at
+  // runtime. On a file-copy update those snapshots outlive the old build and
+  // are then served instead of the new one. A fresh spawn owns this build,
+  // so its runtime cache starts empty.
+  try {
+    fs.rmSync(path.join(appRoot, '.next', 'server', 'route-cache'), { recursive: true, force: true });
+  } catch {}
   const appEnv = parseEnvFile(path.join(appRoot, '.env.local'));
   const env = {
     ...appEnv,

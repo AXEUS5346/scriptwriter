@@ -74,10 +74,11 @@ function serverLog() {
   }
 }
 
-function preflightOnce() {
+function preflightOnce(port) {
+  const p = port == null ? serverPort : port;
   return new Promise((resolve) => {
     const req = http.get(
-      { host: '127.0.0.1', port: serverPort, path: '/api/preflight', timeout: 2500 },
+      { host: '127.0.0.1', port: p, path: '/api/preflight', timeout: 2500 },
       (res) => {
         let body = '';
         res.on('data', (c) => (body += c));
@@ -98,17 +99,83 @@ function preflightOnce() {
   });
 }
 
-function waitForServer() {
+function waitForServer(port) {
   const started = Date.now();
   return new Promise((resolve) => {
     const tick = async () => {
-      const ok = await preflightOnce();
+      const ok = await preflightOnce(port);
       if (ok) return resolve(ok);
       if (Date.now() - started > PREFLIGHT_TIMEOUT_MS) return resolve(null);
       setTimeout(tick, 500);
     };
     tick();
   });
+}
+
+function fetchText(port, reqPath, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port, path: reqPath, timeout: timeoutMs || 2000 },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve(res.statusCode === 200 ? body : null));
+      }
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+function localBuildId() {
+  try {
+    return fs
+      .readFileSync(path.join(resourceRoot(), 'app', '.next', 'BUILD_ID'), 'utf8')
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+function killPortListeners(port) {
+  const out = spawnSync('cmd.exe', [
+    '/c', `netstat -ano | findstr :${port} | findstr LISTENING`,
+  ], { windowsHide: true, encoding: 'utf8' });
+  const pids = new Set();
+  for (const line of String(out.stdout || '').split(/\r?\n/)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 5 && /^\d+$/.test(parts[4]) && Number(parts[4]) !== process.pid) {
+      pids.add(parts[4]);
+    }
+  }
+  for (const pid of pids) {
+    spawnSync('taskkill', ['/pid', pid, '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+  }
+  return pids.size;
+}
+
+/**
+ * Reuse a running server instead of spawning another one. The Maya2 model
+ * takes tens of seconds to load, so a warm server from a previous launch is
+ * worth keeping - but only if it serves the SAME build this window is about
+ * to load (otherwise a post-update stale orphan would keep showing old UI).
+ * Foreign or stale-build servers on the port range are killed.
+ */
+async function adoptExistingServer() {
+  const buildId = localBuildId();
+  if (!buildId) return null;
+  for (let p = BASE_PORT; p < BASE_PORT + PORT_RANGE; p++) {
+    const pf = await preflightOnce(p);
+    if (!pf) continue;
+    const remote = await fetchText(p, '/build-id.txt');
+    if (remote && remote.trim() === buildId) return p;
+    killPortListeners(p);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
 }
 
 // --- server ------------------------------------------------------------
@@ -162,16 +229,20 @@ function startServer() {
 }
 
 function killServer() {
-  if (!serverProc || !serverProc.pid) return;
-  try {
-    spawnSync('taskkill', ['/pid', String(serverProc.pid), '/T', '/F'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    });
-  } catch {
+  if (serverProc && serverProc.pid) {
     try {
-      serverProc.kill();
-    } catch {}
+      spawnSync('taskkill', ['/pid', String(serverProc.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    } catch {
+      try {
+        serverProc.kill();
+      } catch {}
+    }
+  } else if (serverPort != null) {
+    // adopted server: we never spawned it, but it serves nobody else now
+    killPortListeners(serverPort);
   }
   serverProc = null;
 }
@@ -256,6 +327,13 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => app.quit());
 
 app.whenReady().then(async () => {
+  const adopted = await adoptExistingServer();
+  if (adopted != null) {
+    serverPort = adopted;
+    makeMain();
+    win.loadURL(`http://127.0.0.1:${serverPort}/`);
+    return;
+  }
   serverPort = await freePort(BASE_PORT);
   if (serverPort == null) {
     const { dialog } = require('electron');
@@ -265,7 +343,7 @@ app.whenReady().then(async () => {
   }
   startServer();
   makeSplash();
-  await waitForServer();
+  await waitForServer(serverPort);
   makeMain();
   win.loadURL(`http://127.0.0.1:${serverPort}/`);
 });

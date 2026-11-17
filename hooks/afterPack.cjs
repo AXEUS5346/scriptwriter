@@ -17,6 +17,8 @@ exports.default = async function afterPack(context) {
   // fresh installs bring their own key via app/.env.local and start empty
   fs.rmSync(path.join(resources, 'app', '.env.local'), { force: true });
   fs.rmSync(path.join(resources, 'app', '.data'), { recursive: true, force: true });
+  writeBuildId(path.join(resources, 'app'));
+  writeBuildId(path.join(src, 'app'));
   if (!fs.existsSync(path.join(resources, 'models'))) {
     fs.cpSync(path.join(src, 'models'), path.join(resources, 'models'), {
       recursive: true,
@@ -30,6 +32,16 @@ exports.default = async function afterPack(context) {
   console.log('afterPack: node_modules files in resources/app:',
     countFiles(path.join(resources, 'app', 'node_modules')));
 };
+
+// public/build-id.txt lets the Electron launcher tell a warm server of THIS
+// build (reuse it, model stays hot) apart from a stale-build orphan (kill it)
+function writeBuildId(appDir) {
+  try {
+    const id = fs.readFileSync(path.join(appDir, '.next', 'BUILD_ID'), 'utf8').trim();
+    fs.mkdirSync(path.join(appDir, 'public'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'public', 'build-id.txt'), id + '\n', 'utf8');
+  } catch {}
+}
 
 function countFiles(dir) {
   let n = 0;

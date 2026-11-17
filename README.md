@@ -37,7 +37,7 @@ Then open http://localhost:3060.
 | TTS engine | `llama-tts.exe` / `llama-ttsd.exe` build of llama.cpp with TTS support | `TTS_BIN`, `TTS_DAEMON` |
 | TTS model | Maya2 Native GGUF (huggingface.co/maya-research/maya2-native) | `TTS_BACKBONE`, `TTS_MMPROJ` |
 | Clear model | clear-studio.onnx (huggingface.co/desert-ant-labs/clear, v0.3.0 tag) | `CLEAR_MODEL_PATH` |
-| Grammar fix | Groq API key in `.env.local` (`GROQ_API_KEY`) | - |
+| Grammar fix | Groq API key in `.env.local` (`LLM_API_KEY`) | - |
 
 Defaults point at this project's sibling install (`S:\Code\podcaster`); override
 with the env vars above for anything else. The Clear model is fetched from the

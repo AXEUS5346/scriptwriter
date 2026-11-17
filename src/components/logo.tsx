@@ -1,0 +1,41 @@
+import { cn } from 'cn';
+
+/**
+ * Scriptwriter logo: three ruled dialogue lines (like the editor rows);
+ * the middle one is the line that has been voiced — rendered as a waveform.
+ */
+export function LogoTile({ size = 28, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('shrink-0', className)}
+    >
+      <rect x="16" y="16" width="480" height="480" rx="112" fill="#0d0d0f" />
+      <rect x="17.5" y="17.5" width="477" height="477" rx="110.5" stroke="#2c2c31" strokeWidth="3" />
+      {/* line 1 — unspoken text */}
+      <rect x="108" y="149" width="296" height="22" rx="11" fill="#4a4a52" />
+      {/* line 2 — voiced, becomes audio */}
+      <g fill="#fafafa">
+        <rect x="108" y="243" width="11" height="26" rx="5.5" />
+        <rect x="133" y="230" width="11" height="52" rx="5.5" />
+        <rect x="158" y="217" width="11" height="78" rx="5.5" />
+        <rect x="183" y="208" width="11" height="96" rx="5.5" />
+        <rect x="208" y="224" width="11" height="64" rx="5.5" />
+        <rect x="233" y="236" width="11" height="40" rx="5.5" />
+        <rect x="258" y="220" width="11" height="72" rx="5.5" />
+        <rect x="283" y="208" width="11" height="96" rx="5.5" />
+        <rect x="308" y="227" width="11" height="58" rx="5.5" />
+        <rect x="333" y="239" width="11" height="34" rx="5.5" />
+        <rect x="358" y="246" width="11" height="20" rx="5.5" />
+        <rect x="383" y="234" width="11" height="44" rx="5.5" />
+      </g>
+      {/* line 3 — unspoken text */}
+      <rect x="108" y="341" width="232" height="22" rx="11" fill="#4a4a52" />
+    </svg>
+  );
+}

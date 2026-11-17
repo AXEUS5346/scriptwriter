@@ -30,6 +30,27 @@ npm run start -- -p 3060
 
 Then open http://localhost:3060.
 
+## Desktop app (Electron)
+
+The repo packages a Windows desktop build: a native Electron window that
+spawns the production server internally (bundled Node, no console), shows a
+splash while the speech engine loads, and shuts the server down (releasing the
+GPU model) when the window closes. Logo/icon sources live in `build/`.
+
+```bash
+npm run build          # produce app/.next standalone output
+npm run icon           # rebuild build/icon.ico + pngs from build/icon.svg
+npm run package:win    # electron-builder -> release/
+```
+
+To stage the app payload yourself (as `extraResources` sources), the builder's
+copy engine skips `node_modules/`, so `hooks/afterPack.cjs` re-copies the
+standalone app, models, and Node runtime after packing. The installer is built
+from `dist/app` (standalone + `.data`), `dist/models`, and `dist/node`.
+
+Install with `release/Scriptwriter-Setup-<version>.exe`. Per-user install
+(`%LOCALAPPDATA%\Programs\Scriptwriter`), Start Menu shortcut included.
+
 ## External dependencies (not in this repo)
 
 | piece | where | env var |

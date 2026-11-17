@@ -1,0 +1,28 @@
+appId: dev.axeus.scriptwriter
+productName: Scriptwriter
+directories:
+  output: release
+  buildResources: build
+afterPack: hooks/afterPack.cjs
+files:
+  - electron/**/*
+  - package.json
+asar: true
+extraResources:
+  - from: dist/app
+    to: app
+  - from: dist/models
+    to: models
+  - from: dist/node
+    to: node
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: false
+  deleteAppDataOnUninstall: false
+  artifactName: Scriptwriter-Setup-${version}.exe

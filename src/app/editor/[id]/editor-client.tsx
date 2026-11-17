@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { LogoTile } from '@/components/logo';
 import {
   AudioPlayerProvider,
   useAudioPlayer,
@@ -650,6 +651,7 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
           <Button variant="ghost" size="icon-sm" aria-label="Back to scripts" onClick={() => router.push('/')}>
             <ArrowLeftIcon size={15} />
           </Button>
+          <LogoTile size={24} />
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}

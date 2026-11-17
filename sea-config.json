@@ -1,7 +1,0 @@
-{
-  "main": "launcher.cjs",
-  "output": "dist/scriptwriter-sea.blob",
-  "disableExperimentalSEAWarning": true,
-  "useSnapshot": false,
-  "useCodeCache": false
-}

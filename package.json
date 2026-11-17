@@ -1,12 +1,17 @@
 {
   "name": "scriptwriter",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "Multi-speaker TTS dialogue editor",
+  "main": "electron/main.js",
+  "author": "AXEUS5346",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "icon": "node scripts/make-icon.mjs",
+    "package:win": "electron-builder --win nsis"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -30,8 +35,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.5",
     "typescript": "^5"
   },
   "allowScripts": {

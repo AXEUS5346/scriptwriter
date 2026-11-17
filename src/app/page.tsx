@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FileTextIcon, PlusIcon, Mic2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { LogoTile } from '@/components/logo';
 import { cn } from 'cn';
 
 type Summary = { id: string; title: string; updatedAt: string; lineCount: number };
@@ -49,9 +50,12 @@ export default function Home() {
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
       <header className="mb-8 flex items-end justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Scripts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Multi-speaker dialogue, voiced line by line.</p>
+        <div className="flex items-center gap-3">
+          <LogoTile size={36} />
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Scriptwriter</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Multi-speaker dialogue, voiced line by line.</p>
+          </div>
         </div>
         <Button onClick={newScript} size="sm" className="gap-1.5">
           <PlusIcon size={14} /> New script

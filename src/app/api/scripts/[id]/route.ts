@@ -1,5 +1,5 @@
 import { headers } from 'next/headers';
-import { readScript, saveScript } from '@/lib/script-store';
+import { readScript, saveScript, deleteScript, runExclusive } from '@/lib/script-store';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   await headers(); // forces dynamic rendering (never prerender a snapshot)
@@ -17,7 +17,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   } catch {
     return Response.json({ error: 'Invalid body' }, { status: 400 });
   }
-  const s = saveScript(id, patch);
+  const s = await saveScript(id, patch);
   if (!s) return Response.json({ error: 'Script not found' }, { status: 404 });
   return Response.json({ script: s, savedAt: new Date().toISOString() });
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  // the write lock covers clip writes too: delete never races a finishing render
+  const ok = await runExclusive(() => deleteScript(id));
+  if (!ok) return Response.json({ error: 'Script not found' }, { status: 404 });
+  return Response.json({ deleted: true });
 }

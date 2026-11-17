@@ -110,6 +110,14 @@ export function createScript(title?: string): Script {
   return s;
 }
 
+/** Delete one script dir (script.json + all audio). Ids only, no paths. */
+export function deleteScript(id: string): boolean {
+  if (!/^[a-zA-Z0-9_-]{6,64}$/.test(id)) return false;
+  if (!fs.existsSync(scriptPath(id))) return false;
+  fs.rmSync(scriptDir(id), { recursive: true, force: true });
+  return true;
+}
+
 /**
  * All script.json writes (autosave PUT, clip results) go through one promise
  * chain, so a save can't interleave with a finished clip write and drop it.

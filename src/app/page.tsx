@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileTextIcon, PlusIcon, Mic2Icon } from 'lucide-react';
+import { FileTextIcon, PlusIcon, Mic2Icon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { LogoTile } from '@/components/logo';
 import { cn } from 'cn';
 
 type Summary = { id: string; title: string; updatedAt: string; lineCount: number };
+type CtxMenu = { id: string; title: string; x: number; y: number; confirm: boolean } | null;
 
 function relTime(iso: string): string {
   const d = new Date(iso).getTime();
@@ -25,6 +26,9 @@ export default function Home() {
   const router = useRouter();
   const [scripts, setScripts] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [ctx, setCtx] = useState<CtxMenu>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +38,42 @@ export default function Home() {
       .catch(() => { if (alive) setScripts([]); });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    if (!ctx) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtx(null); };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest('[data-ctx-menu]')) return;
+      setCtx(null);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown, true);
+    };
+  }, [ctx]);
+
+  const openCtx = (e: React.MouseEvent, s: Summary) => {
+    e.preventDefault();
+    setCtx({ id: s.id, title: s.title, x: e.clientX, y: e.clientY, confirm: false });
+  };
+
+  const deleteScript = async (id: string) => {
+    setDeleting(true);
+    setDelError(null);
+    try {
+      const r = await fetch(`/api/scripts/${id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(String(r.status));
+      setScripts((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
+      setCtx(null);
+    } catch (err) {
+      setDelError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const newScript = async () => {
     if (creating) return;
@@ -83,6 +123,7 @@ export default function Home() {
             key={s.id}
             type="button"
             onClick={() => router.push(`/editor/${s.id}`)}
+            onContextMenu={(e) => openCtx(e, s)}
             className="group flex h-36 flex-col rounded-2xl border border-border/60 bg-card/40 p-4 text-left transition hover:border-border hover:bg-card/70"
           >
             <FileTextIcon size={16} className="mb-2 text-muted-foreground" />
@@ -106,6 +147,54 @@ export default function Home() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      )}
+
+      {ctx && (
+        <div
+          data-ctx-menu
+          className="fixed z-50 min-w-[11rem] overflow-hidden rounded-lg border border-white/10 bg-[#131316] shadow-xl shadow-black/50"
+          style={{
+            left: Math.min(ctx.x, (typeof window !== 'undefined' ? window.innerWidth : 0) - 190),
+            top: Math.min(ctx.y, (typeof window !== 'undefined' ? window.innerHeight : 0) - 110),
+          }}
+        >
+          {!ctx.confirm ? (
+            <button
+              type="button"
+              onClick={() => setCtx({ ...ctx, confirm: true })}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400"
+            >
+              <Trash2Icon size={13} /> Delete
+            </button>
+          ) : (
+            <div className="p-2.5">
+              <p className="mb-2 line-clamp-2 text-[12px] leading-snug text-foreground/90">
+                Delete “{ctx.title}”? Audio goes with it.
+              </p>
+              {delError && <p className="mb-2 text-[11px] text-red-400">{delError}</p>}
+              <div className="flex gap-1.5">
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  disabled={deleting}
+                  onClick={() => deleteScript(ctx.id)}
+                  className="h-6 flex-1 gap-1 px-2 text-[11px]"
+                >
+                  {deleting ? 'Deleting…' : <><Trash2Icon size={11} /> Delete</>}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={deleting}
+                  onClick={() => setCtx(null)}
+                  className="h-6 flex-1 px-2 text-[11px]"
+                >
+                  Keep
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </main>
   );

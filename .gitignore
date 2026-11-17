@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# next build output
+.next/
+out/
+
+# secrets
+.env.local
+.env*.local
+
+# user data (scripts, generated audio) - stays on the machine
+.data/
+
+# native model artifact (get it from huggingface.co/desert-ant-labs/clear)
+models/
+*.onnx
+
+# installed/packaged build
+dist/
+installer/
+
+# dev probe scratch files
+enhance-probe.mjs
+enhance-probe2.mjs
+clear-smoke.mjs
+onnx-inspect.mjs
+
+# logs & os
+*.log
+Thumbs.db
+.DS_Store
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

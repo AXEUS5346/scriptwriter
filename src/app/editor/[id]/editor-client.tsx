@@ -23,7 +23,7 @@ import { LineRow } from '@/components/editor/line-row';
 import { PlayerBar } from '@/components/editor/player-bar';
 import { NotificationCenter, type NotificationItem } from '@/components/arc/notification-center/notification-center';
 import { statusOf, type ClientLine, type ClientScript } from '@/components/editor/types';
-import { lineHash } from '@/lib/line-text';
+import { lineHash, spokenText } from '@/lib/line-text';
 import { assignSpeakerColors, SPEAKER_PALETTE, type SpeakerColor } from '@/lib/speaker-color';
 import { caretRect, getCaretTextIndex, getSelectionTextRange } from '@/lib/caret';
 import { cn } from 'cn';
@@ -475,6 +475,11 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     if (!line || !line.text.trim()) return;
     const pos = linesRef.current.findIndex((l) => l.id === lineId) + 1;
     const st = statusOf(line, !!genSetRef.current[lineId]);
+    if (!spokenText(line.text).trim()) {
+      // tag-only lines ([sighs] with no words) are legal silent lines
+      pushNote({ tone: 'info', unread: true, title: `Line ${pos} has nothing to speak`, description: 'It only carries emotion tags - write some words and I will voice it.' });
+      return;
+    }
     if (st === 'nospeaker') {
       // speaker-less lines are legal silent lines: nothing to voice, stay calm
       pushNote({ tone: 'info', unread: true, title: `Line ${pos} has no speaker`, description: 'Nothing to voice - assign one any time with / if this line should speak.' });
@@ -499,7 +504,9 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   const generateAll = async () => {
     if (batch) return;
     const all = linesRef.current;
-    const speakable = all.filter((l) => l.text.trim());
+    // lines without a speaker or with no words left after emotion tags are
+    // legal silent lines: skipped quietly
+    const speakable = all.filter((l) => l.speaker && spokenText(l.text).trim());
     // lines without a speaker are legal silent lines: skipped quietly
     const targets = speakable.filter((l) => l.speaker && statusOf(l, !!genSetRef.current[l.id]) !== 'ready');
     if (targets.length === 0) {
@@ -532,6 +539,10 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     if (!line) return;
     if (!line.speaker) {
       pushNote({ tone: 'info', unread: true, title: `Line ${linesRef.current.indexOf(line) + 1} has no speaker`, description: 'Nothing to regenerate - assign one with / first if this line should speak.' });
+      return;
+    }
+    if (!spokenText(line.text).trim()) {
+      pushNote({ tone: 'info', unread: true, title: `Line ${linesRef.current.indexOf(line) + 1} has nothing to speak`, description: 'It only carries emotion tags - write some words and I will voice it.' });
       return;
     }
     setRegenBusy(true);
@@ -651,12 +662,12 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
 
   // ---------- render ----------
   const allReady = useMemo(() => {
-    const speakable = lines.filter((l) => l.text.trim());
+    const speakable = lines.filter((l) => spokenText(l.text).trim());
     // speaker-less lines are legal silent lines with no audio expectations
     return speakable.length > 0 && speakable.every((l) => !l.speaker || (l.audio && l.audio.hash === lineHash(l.speaker, l.text)));
   }, [lines]);
 
-  const speakableCount = lines.filter((l) => l.text.trim()).length;
+  const speakableCount = lines.filter((l) => spokenText(l.text).trim()).length;
 
   if (notFound) {
     return (

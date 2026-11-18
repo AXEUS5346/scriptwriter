@@ -67,7 +67,7 @@ export type LineRowProps = {
 // tiny status marks; "ready" lines stay perfectly clean like ruled paper
 const STATUS_MARK: Record<LineStatus, { label: string; cls: string } | null> = {
   empty: null,
-  nospeaker: { label: 'set speaker', cls: 'text-amber-300' },
+  nospeaker: { label: 'set speaker', cls: 'text-muted-foreground/50' },
   none: null,
   ready: null,
   stale: { label: 'stale', cls: 'text-amber-300/80' },
@@ -158,7 +158,6 @@ export function LineRow(props: LineRowProps) {
         'group grid grid-cols-[2.25rem_1.75rem_auto_minmax(0,1fr)_auto] items-baseline gap-x-1.5 border-l-2 py-1 pl-1 pr-3 transition-colors',
         position % 2 === 1 ? 'border-l-transparent bg-zinc-950' : 'border-l-transparent bg-white/[0.045]',
         line.speaker && status !== 'nospeaker' && spkColor.border,
-        status === 'nospeaker' && 'border-l-amber-500/70 bg-amber-500/[0.04]',
         props.playing && 'border-l-sky-400 bg-sky-500/[0.06]',
       )}
     >
@@ -197,7 +196,7 @@ export function LineRow(props: LineRowProps) {
         <button
           type="button"
           onClick={() => props.onChipSpeaker(line.id)}
-          className="inline-flex items-center text-[10px] text-amber-300/50 transition hover:text-amber-200"
+          className="inline-flex items-center text-[10px] text-muted-foreground/40 transition hover:text-foreground/80"
           title="Pick a speaker — the previous line's speaker is preselected (or press /)"
         >
           <Mic2Icon size={9} />

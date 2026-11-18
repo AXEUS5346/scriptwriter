@@ -12,25 +12,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!s) return new Response('Script not found', { status: 404 });
 
   const speakable = s.lines.filter((l) => l.text.trim());
-  if (speakable.length === 0) return new Response('No lines to download', { status: 404 });
-
-  // strict gate: every speakable line must be up to date (matches merged / UI allReady)
-  for (let i = 0; i < s.lines.length; i++) {
-    const l = s.lines[i];
-    if (!l.text.trim()) continue;
-    if (!l.speaker) return Response.json({ error: `Line ${i + 1} has no speaker` }, { status: 409 });
-    if (!l.audio || l.audio.hash !== lineHash(l.speaker, l.text) || !fs.existsSync(clipPath(id, l.id))) {
-      return Response.json({ error: `Line ${i + 1} has no up-to-date audio` }, { status: 409 });
-    }
-  }
+  // lines without a speaker are legal silent lines: skipped, never a 409
+  const clips = s.lines.filter(
+    (l) =>
+      l.text.trim() &&
+      l.speaker &&
+      l.audio &&
+      l.audio.hash === lineHash(l.speaker, l.text) &&
+      fs.existsSync(clipPath(id, l.id)),
+  );
+  if (clips.length === 0) return new Response('No lines have generated audio yet', { status: 409 });
 
   const entries: Array<{ name: string; data: Uint8Array }> = [];
-  for (let i = 0; i < speakable.length; i++) {
-    const l = speakable[i];
+  for (const l of clips) {
     // legacy 24 kHz clips are upgraded to enhanced 48 kHz here (and on disk)
     const data = await ensureClipEnhanced(id, l.id);
+    const position = s.lines.indexOf(l) + 1; // row number, matching the editor
     entries.push({
-      name: zipNameForLine(i + 1, l.speaker!, l.text),
+      name: zipNameForLine(position, l.speaker!, l.text),
       data: new Uint8Array(data),
     });
   }

@@ -13,6 +13,13 @@ exports.default = async function afterPack(context) {
     recursive: true,
     force: true,
   });
+  // the traced standalone may carry extra onnxruntime-node copies (e.g.
+  // .next/node_modules/onxruntime-node-<hash>) without their sibling DLLs -
+  // any copy missing them binds C:\\Windows\\System32\\onnxruntime.dll (can be
+  // an ancient version) and ACCESS-VIOLATIONs the server on first inference
+  const fixOrt = require('./../scripts/fix-ort-dlls.cjs');
+  fixOrt.runInto(path.join(resources, 'app'));
+  fixOrt.runInto(path.join(src, 'app'));
   // never ship the user's env (API key) or personal scripts in a release:
   // fresh installs bring their own key via app/.env.local and start empty
   fs.rmSync(path.join(resources, 'app', '.env.local'), { force: true });

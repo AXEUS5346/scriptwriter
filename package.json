@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/fix-ort-dlls.cjs",
     "start": "next start",
     "lint": "eslint",
     "icon": "node scripts/make-icon.mjs",

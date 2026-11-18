@@ -367,7 +367,7 @@ async function getSession(): Promise<{ session: OrtSession; ort: Ort }> {
       const session = await ort.InferenceSession.create(CLEAR_MODEL_PATH, {
         graphOptimizationLevel: 'all',
         executionMode: 'sequential',
-        intraOpNumThreads: 5, // locked rule: leave one core for OS/TTS
+        intraOpNumThreads: Number(process.env.ORT_INTRA_OP_THREADS ?? 5), // locked rule: leave one core for OS/TTS
         interOpNumThreads: 1,
       });
       return { session, ort };
@@ -390,13 +390,18 @@ const REN_IM = new Float64Array(FFT);
  * can surface a real error instead of silently passing audio through.
  */
 export async function enhanceMono48k(x: Float32Array): Promise<Float32Array> {
+  const trace = process.env.SW_TRACE;
+  const tp = (s: string) => { if (trace) { try { fs.appendFileSync(trace, `${Date.now() % 100000} enh:${s}\n`); } catch { /* tracing must never crash */ } } };
+  tp('enter');
   const { session, ort } = await getSession();
+  tp('session-ready');
   const len = x.length;
   let rms = 0;
   for (let i = 0; i < len; i++) rms += x[i] * x[i];
   if (Math.sqrt(rms / Math.max(1, len)) < 1e-5) return x.slice(); // silence
 
   const an = analyzeFrames(x);
+  tp(`analyzed frames=${an.nFrames} chunks=${Math.max(1, Math.ceil(an.nFrames / FRAMES_OUT))}`);
   const y = new Float32Array(len);
   let coveredTo = 0;
   const chunkCount = Math.max(1, Math.ceil(an.nFrames / FRAMES_OUT));
@@ -433,7 +438,9 @@ export async function enhanceMono48k(x: Float32Array): Promise<Float32Array> {
       [nameOf('feat_erb')]: erbT,
       [nameOf('feat_spec')]: featT,
     };
+    tp(`run c=${c}/${chunkCount}`);
     const result = await session.run(feeds);
+    tp(`ran c=${c}/${chunkCount}`);
     const enhOut = result[session.outputNames[0]].data as Float32Array;
     // WOLA synthesis of the frames this chunk owns:
     // output region = samples covered (both humps) by output frames
@@ -461,6 +468,7 @@ export async function enhanceMono48k(x: Float32Array): Promise<Float32Array> {
     }
     coveredTo = regionEnd;
   }
+  tp('done');
   return y;
 }
 
@@ -544,6 +552,7 @@ export interface EnhanceWavResult {
  */
 export async function enhanceWavBuffer(buf: Buffer): Promise<EnhanceWavResult> {
   const wav = decodeWavMono(buf);
+  if (process.env.SW_TRACE) { try { fs.appendFileSync(process.env.SW_TRACE!, `${Date.now() % 100000} enh:decoded sr=${wav.sampleRate} samples=${wav.mono.length}\n`); } catch { /* trace */ } }
   let x = wav.mono;
   if (wav.sampleRate !== SR) {
     if (wav.sampleRate === SR / 2) {

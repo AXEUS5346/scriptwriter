@@ -476,7 +476,8 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     const pos = linesRef.current.findIndex((l) => l.id === lineId) + 1;
     const st = statusOf(line, !!genSetRef.current[lineId]);
     if (st === 'nospeaker') {
-      pushNote({ tone: 'warning', unread: true, title: `Line ${pos} needs a speaker`, description: 'Press / on that line, or click its speaker chip.' });
+      // speaker-less lines are legal silent lines: nothing to voice, stay calm
+      pushNote({ tone: 'info', unread: true, title: `Line ${pos} has no speaker`, description: 'Nothing to voice - assign one any time with / if this line should speak.' });
       return;
     }
     if (preflight.state !== 'ready') {
@@ -499,19 +500,10 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     if (batch) return;
     const all = linesRef.current;
     const speakable = all.filter((l) => l.text.trim());
-    const missingSpeaker = speakable.filter((l) => !l.speaker);
-    if (missingSpeaker.length > 0) {
-      const nums = missingSpeaker.map((l) => all.indexOf(l) + 1).join(', ');
-      pushNote({
-        tone: 'warning',
-        unread: true,
-        title: `Line${missingSpeaker.length > 1 ? 's' : ''} ${nums} need${missingSpeaker.length > 1 ? '' : 's'} a speaker`,
-        description: 'Press / on an empty line or click the speaker chip. Skipped for now.',
-      });
-    }
+    // lines without a speaker are legal silent lines: skipped quietly
     const targets = speakable.filter((l) => l.speaker && statusOf(l, !!genSetRef.current[l.id]) !== 'ready');
     if (targets.length === 0) {
-      if (missingSpeaker.length === 0) {
+      if (speakable.some((l) => l.speaker)) {
         // nothing to render, but the user may still want the merged episode loaded
         const okEp = await refreshEpisode();
         pushNote({ tone: 'success', title: 'Audio already up to date', description: okEp ? 'Full episode loaded in the player below.' : 'Every line already has audio for its current text.' });
@@ -539,7 +531,7 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
     const line = linesRef.current.find((l) => l.id === activeLine.id);
     if (!line) return;
     if (!line.speaker) {
-      pushNote({ tone: 'warning', unread: true, title: `Line ${linesRef.current.indexOf(line) + 1} needs a speaker`, description: 'Set a speaker before it can be generated.' });
+      pushNote({ tone: 'info', unread: true, title: `Line ${linesRef.current.indexOf(line) + 1} has no speaker`, description: 'Nothing to regenerate - assign one with / first if this line should speak.' });
       return;
     }
     setRegenBusy(true);
@@ -660,7 +652,8 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
   // ---------- render ----------
   const allReady = useMemo(() => {
     const speakable = lines.filter((l) => l.text.trim());
-    return speakable.length > 0 && speakable.every((l) => l.speaker && l.audio && l.audio.hash === lineHash(l.speaker, l.text));
+    // speaker-less lines are legal silent lines with no audio expectations
+    return speakable.length > 0 && speakable.every((l) => !l.speaker || (l.audio && l.audio.hash === lineHash(l.speaker, l.text)));
   }, [lines]);
 
   const speakableCount = lines.filter((l) => l.text.trim()).length;

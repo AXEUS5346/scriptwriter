@@ -17,6 +17,9 @@ let splash = null;
 let serverProc = null;
 let serverPort = null;
 let quitting = false;
+let serverRestarts = 0;
+const MAX_SERVER_RESTARTS = 3;
+let serverStartedAt = 0;
 
 // --- helpers -----------------------------------------------------------
 
@@ -218,6 +221,7 @@ function startServer() {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  serverStartedAt = Date.now();
   serverProc.on('error', (err) => {
     try {
       const { dialog } = require('electron');
@@ -232,6 +236,32 @@ function startServer() {
     serverProc.stderr.on('data',
       (d) => log.write(`[err] ${d}`));
     serverProc.on('exit', (code) => log.write(`--- exit ${new Date().toISOString()} (code ${code}) ---\n`));
+  }
+  // watchdog: a native crash in a route (e.g. a bad addon) must not turn the
+  // whole app dead while the window is open - spawn a fresh server on the
+  // same port, so a renderer retry just works
+  if (serverProc) {
+    serverProc.once('exit', (code) => {
+      if (quitting || !win || win.isDestroyed()) return;
+      serverProc = null;
+      // a server that lived > 5 min earns a fresh restart budget
+      if (Date.now() - serverStartedAt > 5 * 60 * 1000) serverRestarts = 0;
+      if (serverRestarts >= MAX_SERVER_RESTARTS) {
+        try {
+          const { dialog } = require('electron');
+          dialog.showErrorBox('Scriptwriter', 'The local audio server crashed repeatedly. Restart the app.');
+        } catch {}
+        return;
+      }
+      serverRestarts += 1;
+      if (log) log.write(`--- watchdog: restarting server (attempt ${serverRestarts}/${MAX_SERVER_RESTARTS}, prev code ${code}) ---\n`);
+      setTimeout(() => {
+        if (quitting) return;
+        try { startServer(); } catch (e) {
+          if (log) log.write(`--- watchdog restart failed: ${e.message} ---\n`);
+        }
+      }, 1500);
+    });
   }
 }
 

@@ -142,6 +142,9 @@ export type GenerateLineResult =
  *  take and the merged line audibly changes character better mid-sentence. The
  *  seed still differs between regens (fresh take on the Regenerate button). */
 export async function generateLineAudio(scriptId: string, line: Line): Promise<GenerateLineResult> {
+  const trace = process.env.SW_TRACE;
+  const tp = (s: string) => { if (trace) { try { fs.appendFileSync(trace, `${Date.now() % 100000} gen:${s}\n`); } catch { /* tracing must never crash */ } } };
+  tp(`start line=${line.id}`);
   const dir = clipDir(scriptId, line.id);
   fs.mkdirSync(dir, { recursive: true });
   const text = guardForeignVoiceNames(scrubUnknownTags(line.text), line.speaker ?? '');
@@ -159,6 +162,7 @@ export async function generateLineAudio(scriptId: string, line: Line): Promise<G
       return { ok: false, error: prompts.length > 1 ? `segment ${seg + 1}/${prompts.length}: ${r.error}` : r.error, segments: seg + 1 };
     }
     parts.push(fs.readFileSync(outPath));
+    tp(`seg ${seg + 1}/${prompts.length} ok bytes=${parts[parts.length - 1].length}`);
   }
 
   try {
@@ -176,17 +180,21 @@ export async function generateLineAudio(scriptId: string, line: Line): Promise<G
       mergedParts.push(p);
     });
     const merged = concatWavs(mergedParts);
+    tp(`merged bytes=${merged.length}`);
     // Mandatory Clear enhancement (denoise/dereverb/loudness): every clip is
     // cleared before it can enter the player or any download. 24 kHz TTS PCM
     // goes up to 48 kHz first; the enhanced clip is what gets stored.
     let enhanced;
     try {
       enhanced = await enhanceWavBuffer(merged);
+      tp(`enhanced bytes=${enhanced.buffer.length}`);
     } catch (e) {
+      tp(`enh-failed ${String(e).slice(0, 120)}`);
       return { ok: false, error: `Clear enhancement failed: ${String(e)}`, segments: prompts.length };
     }
     const out = clipPath(scriptId, line.id);
     fs.writeFileSync(out, enhanced.buffer);
+    tp('written');
     return { ok: true, clipPath: out, durationMs: enhanced.durationMs, segments: prompts.length };
   } catch (e) {
     return { ok: false, error: `Merge failed: ${String(e)}`, segments: prompts.length };

@@ -4,7 +4,8 @@ import {
 } from '@/lib/script-store';
 import { getTTSState, startPreflight } from '@/lib/preflight';
 import { generateLineAudio, enqueueTts, touchTtsLock, clearTtsLock } from '@/lib/tts';
-import { lineHash } from '@/lib/line-text';
+import { lineHash, spokenText } from '@/lib/line-text';
+import { logEv } from '@/lib/applog';
 
 const globalKey = '__SCRIPTWRITER_LINE_INFLIGHT__';
 function inflight(): Set<string> {
@@ -36,6 +37,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!line.speaker) {
     return Response.json({ error: 'This line has no speaker', lineId }, { status: 422 });
   }
+  if (!spokenText(line.text).trim()) {
+    // tag-only lines ([sighs] with no words) are legal silent lines: skip clean,
+    // never a failure - the generator would otherwise render zero segments and
+    // crash in the merge step
+    return Response.json({ ok: true, skipped: 'no-speakable-text', lineId, line });
+  }
 
   const key = `${id}:${lineId}`;
   if (inflight().has(key)) {
@@ -48,6 +55,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   inflight().add(key);
+  const t0 = Date.now();
+  logEv('line', `render start ${id}/${lineId}`, { speaker: line.speaker, text: line.text });
   try {
     // snapshot the line content that THIS render adopts (an edit during
     // generation lands in a fresh save and will mark the clip stale afterwards)
@@ -67,6 +76,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ? { ok: true, hash: lineHash(renderSpeaker, renderText), durationMs: r.durationMs }
       : { ok: false, error: r.error });
     if (!updated) return Response.json({ error: 'Script vanished during generation' }, { status: 500 });
+    logEv('line', `render ${r.ok ? 'OK' : 'FAILED'} in ${Date.now() - t0}ms`, {
+      scriptId: id, lineId, ok: r.ok, segments: r.segments, error: r.ok ? undefined : r.error,
+    });
 
     if (r.ok) {
       return Response.json({ ok: true, line: updated, segments: r.segments });

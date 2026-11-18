@@ -26,6 +26,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { logEv } from '@/lib/applog';
 
 export const CLEAR_MODEL_PATH =
   process.env.CLEAR_MODEL_PATH ?? path.join(process.cwd(), 'models', 'clear-studio.onnx');
@@ -370,10 +371,14 @@ async function getSession(): Promise<{ session: OrtSession; ort: Ort }> {
         intraOpNumThreads: Number(process.env.ORT_INTRA_OP_THREADS ?? 5), // locked rule: leave one core for OS/TTS
         interOpNumThreads: 1,
       });
+      logEv('clear', 'model loaded', { path: CLEAR_MODEL_PATH, bytes: fs.statSync(CLEAR_MODEL_PATH).size });
       return { session, ort };
     })();
     // a failed load must not poison every future call - allow a retry
-    p.catch(() => { if (sessionP === p) sessionP = null; });
+    p.catch((e) => {
+      if (sessionP === p) sessionP = null;
+      logEv('clear', `model load FAILED: ${String(e).slice(0, 200)}`);
+    });
     sessionP = p;
   }
   return sessionP;
@@ -551,6 +556,7 @@ export interface EnhanceWavResult {
  * This is a mandatory stage: callers must treat failure as a render failure.
  */
 export async function enhanceWavBuffer(buf: Buffer): Promise<EnhanceWavResult> {
+  const t0 = Date.now();
   const wav = decodeWavMono(buf);
   if (process.env.SW_TRACE) { try { fs.appendFileSync(process.env.SW_TRACE!, `${Date.now() % 100000} enh:decoded sr=${wav.sampleRate} samples=${wav.mono.length}\n`); } catch { /* trace */ } }
   let x = wav.mono;
@@ -571,6 +577,7 @@ export async function enhanceWavBuffer(buf: Buffer): Promise<EnhanceWavResult> {
     const g = 0.99 / peak;
     for (let i = 0; i < enhanced.length; i++) enhanced[i] *= g;
   }
+  logEv('clear', `enhanced ok in ${Date.now() - t0}ms`, { inBytes: buf.length, outMs: Math.round((enhanced.length / SR) * 1000) });
   return { buffer: encodeWav48k(enhanced), durationMs: Math.round((enhanced.length / SR) * 1000), sampleRate: SR };
 }
 

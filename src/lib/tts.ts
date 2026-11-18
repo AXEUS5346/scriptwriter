@@ -15,6 +15,8 @@ import { splitLinePrompts, GAP_MS } from '@/lib/prompt-chunks';
 import { VOICES } from '@/lib/voices';
 import { enhanceWavBuffer } from '@/lib/enhance';
 import { concatWavs, parseWav, silenceWav, clipIsEnhancedPcm16Mono48k } from '@/lib/wav';
+import { expandNumbersForTts } from '@/lib/line-text';
+import { logEv } from '@/lib/applog';
 
 // ---- TTS prompt chunking ----------------------------------------------------
 // The chunker lives in ./prompt-chunks (pure, unit-testable): callbacks only
@@ -147,8 +149,19 @@ export async function generateLineAudio(scriptId: string, line: Line): Promise<G
   tp(`start line=${line.id}`);
   const dir = clipDir(scriptId, line.id);
   fs.mkdirSync(dir, { recursive: true });
-  const text = guardForeignVoiceNames(scrubUnknownTags(line.text), line.speaker ?? '');
+  // numbers -> spoken words BEFORE chunking: the model skips digit sequences
+  // (model card; the reference engine normalizes - we do it here instead).
+  // Render-time only, the editor text is untouched.
+  const text = expandNumbersForTts(
+    guardForeignVoiceNames(scrubUnknownTags(line.text), line.speaker ?? ''),
+  );
   const prompts = splitLinePrompts(text);
+  logEv('tts', `generate line ${line.id}: ${prompts.length} prompt(s)`, { prompts });
+  if (prompts.length === 0) {
+    // tag-only line ([sighs] with no words): zero segments would crash the
+    // merge step (parseWav of an undefined first part)
+    return { ok: false, error: 'No speakable text (line is only emotion tags)', segments: 0 };
+  }
   const seed = randomUInt31();
   const parts: Buffer[] = [];
 
@@ -159,9 +172,11 @@ export async function generateLineAudio(scriptId: string, line: Line): Promise<G
     fs.writeFileSync(promptPath, full, 'utf8');
     const r = await runSegment(promptPath, outPath, full, seg + 1, prompts.length, seed);
     if (!r.ok) {
+      logEv('tts', `seg ${seg + 1}/${prompts.length} FAILED: ${r.error}`, { line: line.id });
       return { ok: false, error: prompts.length > 1 ? `segment ${seg + 1}/${prompts.length}: ${r.error}` : r.error, segments: seg + 1 };
     }
     parts.push(fs.readFileSync(outPath));
+    logEv('tts', `seg ${seg + 1}/${prompts.length} ok bytes=${parts[parts.length - 1].length}`, { line: line.id, prompt: full });
     tp(`seg ${seg + 1}/${prompts.length} ok bytes=${parts[parts.length - 1].length}`);
   }
 
@@ -190,10 +205,17 @@ export async function generateLineAudio(scriptId: string, line: Line): Promise<G
       tp(`enhanced bytes=${enhanced.buffer.length}`);
     } catch (e) {
       tp(`enh-failed ${String(e).slice(0, 120)}`);
+      logEv('clear', `enhance FAILED line ${line.id}: ${String(e).slice(0, 200)}`, { inBytes: merged.length });
       return { ok: false, error: `Clear enhancement failed: ${String(e)}`, segments: prompts.length };
     }
     const out = clipPath(scriptId, line.id);
-    fs.writeFileSync(out, enhanced.buffer);
+    // keep the previous take for comparison and write atomically: the player
+    // may read the clip while a regen overwrites it
+    try { if (fs.existsSync(out)) fs.copyFileSync(out, out.replace(/clip\.wav$/, 'clip-prev.wav')); } catch { /* history is best effort */ }
+    const tmp = `${out}.tmp`;
+    fs.writeFileSync(tmp, enhanced.buffer);
+    fs.renameSync(tmp, out);
+    logEv('tts', `line ${line.id} ok`, { bytes: enhanced.buffer.length, durationMs: enhanced.durationMs, segments: prompts.length });
     tp('written');
     return { ok: true, clipPath: out, durationMs: enhanced.durationMs, segments: prompts.length };
   } catch (e) {
@@ -211,7 +233,10 @@ export async function ensureClipEnhanced(scriptId: string, lineId: string): Prom
   const buf = fs.readFileSync(p);
   if (clipIsEnhancedPcm16Mono48k(buf)) return buf;
   const enhanced = await enhanceWavBuffer(buf);
-  fs.writeFileSync(p, enhanced.buffer);
+  logEv('tts', `legacy clip upgrade ${lineId}`, { inBytes: buf.length, outBytes: enhanced.buffer.length });
+  const tmp = `${p}.tmp`;
+  fs.writeFileSync(tmp, enhanced.buffer);
+  fs.renameSync(tmp, p);
   return enhanced.buffer;
 }
 

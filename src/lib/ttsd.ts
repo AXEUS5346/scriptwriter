@@ -12,6 +12,7 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import { buildTtsEnv, dlog, TTS_PATHS } from './tts-paths';
+import { logEv } from './applog';
 
 export type DaemonStatus = 'idle' | 'starting' | 'ready' | 'dead';
 
@@ -63,6 +64,7 @@ export function daemonLastError(): string | undefined {
 }
 
 function notify(status: DaemonStatus, reason?: string): void {
+  logEv('engine', `daemon ${status}${reason ? `: ${reason}` : ''}`);
   for (const fn of s().listeners) {
     try { fn(status, reason); } catch { /* listener errors don't break the daemon */ }
   }

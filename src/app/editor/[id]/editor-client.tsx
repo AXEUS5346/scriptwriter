@@ -219,12 +219,14 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
 
   const startClip = (line: ClientLine) => {
     const id = itemIdOf(line);
-    if (player.isItemActive(id)) {
+    const src = srcOf(line);
+    if (player.isItemActive(id) && player.activeItem?.src === src) {
       const el = player.ref.current;
       if (el && el.ended) player.seek(0);
       void player.play();
     } else {
-      void player.play({ id, src: srcOf(line), data: null });
+      // src change (regenerated clip) must reload - the old element holds the previous take
+      void player.play({ id, src, data: null });
     }
   };
 
@@ -398,7 +400,11 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
 
   // ---------- line ops ----------
   const patchLine = (lineId: string, patch: Partial<ClientLine>) => {
-    setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, ...patch } : l)));
+    // update the ref synchronously: continuations right after patchLine (e.g.
+    // startClip in playLine) must see the new audio hash/gen - the ref would
+    // otherwise lag one render behind and play the previous take
+    linesRef.current = linesRef.current.map((l) => (l.id === lineId ? { ...l, ...patch } : l));
+    setLines(linesRef.current);
   };
 
   const addLineAfter = (lineId: string) => {

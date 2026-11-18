@@ -122,7 +122,7 @@ export function AudioPlayerProvider<TData = unknown>({
     async (item: AudioPlayerItem<TData> | null) => {
       if (!audioRef.current) return
 
-      if (item?.id === itemRef.current?.id) {
+      if (item?.id === itemRef.current?.id && item?.src === itemRef.current?.src) {
         return
       }
       itemRef.current = item
@@ -157,11 +157,13 @@ export function AudioPlayerProvider<TData = unknown>({
         playPromiseRef.current = playPromise
         return playPromise
       }
-      if (item?.id === activeItem?.id) {
+      if (item?.id === activeItem?.id && item?.src === activeItem?.src) {
+        // same item, same media: just resume
         const playPromise = audioRef.current.play()
         playPromiseRef.current = playPromise
         return playPromise
       }
+      // same item but a new src (regenerated clip): fall through and reload
 
       itemRef.current = item
       const currentRate = audioRef.current.playbackRate

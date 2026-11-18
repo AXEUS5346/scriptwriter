@@ -194,6 +194,22 @@ function startServer() {
     fs.rmSync(path.join(appRoot, '.next', 'server', 'route-cache'), { recursive: true, force: true });
   } catch {}
   const appEnv = parseEnvFile(path.join(appRoot, '.env.local'));
+  // Scripts live in roaming app data (%APPDATA%/Scriptwriter/data) - the
+  // install folder is wiped by every update, so it must never hold the only
+  // copy. One-time migration from the legacy bundled .data on first run.
+  const dataDir = path.join(app.getPath('userData'), 'data');
+  try {
+    fs.mkdirSync(path.join(dataDir, 'scripts'), { recursive: true });
+    const legacyBase = path.join(appRoot, '.data', 'scripts');
+    const legacyHasEntries = fs
+      .readdirSync(legacyBase, { withFileTypes: true })
+      .some((e) => e.isDirectory() && e.name.includes('-'));
+    const targetEmpty =
+      fs.readdirSync(path.join(dataDir, 'scripts'), { withFileTypes: true }).length === 0;
+    if (legacyHasEntries && targetEmpty) {
+      fs.cpSync(legacyBase, path.join(dataDir, 'scripts'), { recursive: true });
+    }
+  } catch {}
   const env = {
     ...appEnv,
     ...process.env,
@@ -201,6 +217,7 @@ function startServer() {
     PORT: String(serverPort),
     HOSTNAME: '127.0.0.1',
     CLEAR_MODEL_PATH: path.join(root, 'models', 'clear-studio.onnx'),
+    SCRIPTWRITER_DATA_DIR: dataDir,
     NEXT_TELEMETRY_DISABLED: '1',
   };
 

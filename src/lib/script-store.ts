@@ -31,7 +31,10 @@ export type ScriptSummary = {
 };
 
 export function dataRoot(): string {
-  return path.join(process.cwd(), '.data', 'scripts');
+  // packaged app: electron points this at %APPDATA%/Scriptwriter/data so
+  // reinstalls/upgrades (which wipe the install dir) can never touch scripts
+  const base = process.env.SCRIPTWRITER_DATA_DIR || path.join(process.cwd(), '.data');
+  return path.join(base, 'scripts');
 }
 
 export function scriptDir(id: string): string {

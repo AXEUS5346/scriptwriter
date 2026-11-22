@@ -864,6 +864,11 @@ function EditorLoaded({ scriptId }: { scriptId: string }) {
         episodeMode={episodeMode}
         regenerating={regenBusy}
         onRegenerate={regeneratePlayerLine}
+        downloadHref={
+          !episodeMode && activeLine && activeLine.audio
+            ? `/api/scripts/${scriptId}/audio/${activeLine.id}?download=1`
+            : null
+        }
       />
     </main>
   );

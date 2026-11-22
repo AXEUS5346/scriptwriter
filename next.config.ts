@@ -6,14 +6,9 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   serverExternalPackages: ["onnxruntime-node"], // native binding must not be bundled
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
+  // styles are compiled by @tailwindcss/postcss (postcss.config.mjs) for every
+  // builder; the old turbopack-only css rule is gone so webpack builds the same
+  // stylesheet Turbopack does
 };
 
 export default nextConfig;

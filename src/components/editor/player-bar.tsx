@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2Icon, RefreshCcwIcon, Mic2Icon } from 'lucide-react';
+import { DownloadIcon, Loader2Icon, RefreshCcwIcon, Mic2Icon } from 'lucide-react';
 import { cn } from 'cn';
 import { type SpeakerColor } from '@/lib/speaker-color';
 import {
@@ -20,6 +20,8 @@ export type PlayerBarProps = {
   episodeMode: boolean;
   regenerating: boolean;
   onRegenerate: () => void;
+  /** ?download=1 URL for the loaded clip; null while nothing is loaded */
+  downloadHref: string | null;
 };
 
 // layout mirrors the elevenlabs ui audio-player demo:
@@ -33,6 +35,7 @@ export function PlayerBar({
   episodeMode,
   regenerating,
   onRegenerate,
+  downloadHref,
 }: PlayerBarProps) {
   const player = useAudioPlayer();
   const disabled = !activeLineId && !episodeMode;
@@ -84,6 +87,17 @@ export function PlayerBar({
               {regenerating ? <Loader2Icon size={12} className="animate-spin" /> : <RefreshCcwIcon size={12} />}
               Regenerate
             </button>
+          )}
+          {downloadHref && (
+            <a
+              href={downloadHref}
+              download
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              title="Download this clip as .wav"
+            >
+              <DownloadIcon size={12} />
+              Download
+            </a>
           )}
         </div>
         <div className="flex items-center gap-3 sm:gap-4">

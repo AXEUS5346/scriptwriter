@@ -63,6 +63,22 @@ function rmDir(p) {
   } catch {}
 }
 
+function countCss(dir) {
+  let n = 0;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) n += countCss(p);
+    else if (entry.name.endsWith('.css')) n += 1;
+  }
+  return n;
+}
+
 function main() {
   if (!exists(path.join(nextDir, 'BUILD_ID'))) {
     throw new Error('.next/BUILD_ID missing - run `npm run build` first');
@@ -100,9 +116,9 @@ function main() {
     if (!exists(p)) throw new Error('staged build missing: ' + p);
   }
   const chunkCount = fs.readdirSync(path.join(dest, '.next', 'static', 'chunks')).length;
-  const cssCount = fs
-    .readdirSync(path.join(dest, '.next', 'static', 'chunks'))
-    .filter((f) => f.endsWith('.css')).length;
+  // css lands in static/chunks/*.css under Turbopack and static/css/*.css under
+  // webpack - scan the whole tree so either builder passes
+  const cssCount = countCss(path.join(dest, '.next', 'static'));
   if (cssCount === 0) throw new Error('staged build has no CSS chunks');
   console.log(`staged dist/app: BUILD_ID ${buildId}, ${chunkCount} chunk files, ${cssCount} css files`);
 }

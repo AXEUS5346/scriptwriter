@@ -80,13 +80,21 @@ function main() {
   // 2. client chunks: .next/static -> dist/app/.next/static (never shipped by standalone)
   copyDir(path.join(nextDir, 'static'), path.join(dest, '.next', 'static'));
 
-  // 3. verify the shipped build can actually boot and hydrate
+  // 3. build id marker: electron main adopts a warm server only when the
+  //    served /build-id.txt (public/) matches the local .next/BUILD_ID -
+  //    the repo has no public/ dir, so emit it here
+  const buildId = fs.readFileSync(path.join(nextDir, 'BUILD_ID'), 'utf8').trim();
+  fs.mkdirSync(path.join(dest, 'public'), { recursive: true });
+  fs.writeFileSync(path.join(dest, 'public', 'build-id.txt'), buildId + '\n');
+
+  // 4. verify the shipped build can actually boot and hydrate
   const required = [
     path.join(dest, 'server.js'),
     path.join(dest, 'package.json'),
     path.join(dest, '.next', 'BUILD_ID'),
     path.join(dest, '.next', 'server'),
     path.join(dest, '.next', 'static', 'chunks'),
+    path.join(dest, 'public', 'build-id.txt'),
   ];
   for (const p of required) {
     if (!exists(p)) throw new Error('staged build missing: ' + p);
@@ -96,7 +104,6 @@ function main() {
     .readdirSync(path.join(dest, '.next', 'static', 'chunks'))
     .filter((f) => f.endsWith('.css')).length;
   if (cssCount === 0) throw new Error('staged build has no CSS chunks');
-  const buildId = fs.readFileSync(path.join(dest, '.next', 'BUILD_ID'), 'utf8').trim();
   console.log(`staged dist/app: BUILD_ID ${buildId}, ${chunkCount} chunk files, ${cssCount} css files`);
 }
 
